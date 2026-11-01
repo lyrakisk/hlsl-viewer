@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HLSL Viewer</title>
+<meta name="description" content="Write HLSL pixel shaders and see them run live in your browser (WebGL2).">
+<style>
+:root{--bg:#0f1115;--panel:#161a21;--panel2:#1c212b;--line:#2a3140;--text:#d7dce5;--dim:#8892a6;--accent:#5aa2ff;--err:#ff6b6b;--ok:#6bdc8b}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+body{display:flex;flex-direction:column}
+button,select,input{font:inherit;color:inherit}
+button,select{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover,select:hover{border-color:var(--accent)}
+header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+header h1{font-size:15px;margin:0 8px 0 0;font-weight:650;letter-spacing:.2px}
+header .sp{flex:1}
+#status{font-size:12px;color:var(--dim);display:flex;align-items:center;gap:6px}
+#status i{width:9px;height:9px;border-radius:50%;background:var(--dim);display:inline-block}
+#status.ok i{background:var(--ok)} #status.err i{background:var(--err)}
+main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.col{min-width:0;min-height:0;display:flex;flex-direction:column}
+.left{border-right:1px solid var(--line)}
+.editor{flex:1;min-height:0;display:flex;background:var(--bg)}
+#gutter{margin:0;padding:10px 6px 10px 0;width:46px;flex:none;overflow:hidden;text-align:right;color:#566074;font:13px/20px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;user-select:none;background:var(--panel);border-right:1px solid var(--line)}
+#gutter .e{color:#fff;background:var(--err);display:inline-block;min-width:26px;padding-right:2px;border-radius:2px}
+.code{position:relative;flex:1;min-width:0}
+#hl,#src{position:absolute;inset:0;margin:0;border:0;padding:10px 12px;white-space:pre;tab-size:4;font:13px/20px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:0}
+#hl{overflow:hidden;pointer-events:none;color:#d7dce5}
+#src{resize:none;outline:none;background:transparent;color:transparent;caret-color:#fff;overflow:auto}
+#src::selection{background:rgba(90,162,255,.35)}
+.c{color:#6a7a8f;font-style:italic}.p{color:#c792ea}.t{color:#4ec9b0}.k{color:#ff7aa2}.f{color:#7ab7ff}.n{color:#f2a65a}
+.stage{position:relative;flex:3;min-height:200px;background:#000}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+.hud{position:absolute;left:8px;right:8px;bottom:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;opacity:.0;transition:opacity .15s}
+.stage:hover .hud,.hud:focus-within{opacity:1}
+.hud button,.hud select{background:rgba(22,26,33,.85);backdrop-filter:blur(4px)}
+.hud .sp{flex:1}
+#stats{font:12px ui-monospace,Menlo,Consolas,monospace;background:rgba(22,26,33,.85);padding:4px 8px;border-radius:6px;color:var(--dim)}
+.tabs{display:flex;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--panel)}
+.tabs button{border:0;border-radius:0;background:none;padding:7px 14px;color:var(--dim);border-bottom:2px solid transparent}
+.tabs button.on{color:var(--text);border-bottom-color:var(--accent)}
+.panel{flex:2;min-height:120px;overflow:auto;padding:10px 12px;background:var(--panel)}
+.pane{display:none}.pane.on{display:block}
+pre.log,pre.glsl{margin:0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+pre.glsl{white-space:pre;word-break:normal}
+.log .e{color:var(--err)}.log .o{color:var(--ok)}.log .d{color:var(--dim)}
+.ctl{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;background:var(--panel2)}
+.ctl h4{margin:0 0 6px;font-size:12px;font-weight:600}.ctl h4 span{color:var(--dim);font-weight:400;margin-left:6px}
+.row{display:grid;grid-template-columns:22px 1fr 78px;gap:8px;align-items:center;margin:3px 0}
+.row label{color:var(--dim);font-size:12px}
+.row input[type=range]{width:100%;accent-color:var(--accent)}
+.row input[type=number]{width:78px;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:2px 5px}
+.hint{color:var(--dim);font-size:12px}
+.help h3{margin:12px 0 4px;font-size:13px}.help p,.help li{font-size:13px;color:#bcc4d4}.help code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px}
+.help ul{margin:4px 0;padding-left:20px}
+#nogl{display:none;position:absolute;inset:0;align-items:center;justify-content:center;text-align:center;padding:20px;color:var(--err)}
+@media (max-width:860px){main{grid-template-columns:1fr;grid-template-rows:minmax(260px,1fr) minmax(0,1.6fr)}.left{border-right:0;border-bottom:1px solid var(--line)}.hud{opacity:1}}
+</style>
+</head>
+<body>
+<header>
+  <h1>HLSL Viewer</h1>
+  <select id="samples" title="Load an example"></select>
+  <button id="btnOpen" title="Open an .hlsl / .txt file">Open</button>
+  <button id="btnSave" title="Download as .hlsl">Save</button>
+  <button id="btnShare" title="Copy a link that contains your shader">Share link</button>
+  <input id="fileIn" type="file" accept=".hlsl,.fx,.txt,.ps,text/plain" hidden>
+  <span class="sp"></span>
+  <span id="status"><i></i><span>starting…</span></span>
+</header>
+<main>
+  <section class="col left">
+    <div class="editor">
+      <pre id="gutter"></pre>
+      <div class="code"><pre id="hl" aria-hidden="true"></pre><textarea id="src" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea></div>
+    </div>
+  </section>
+  <section class="col">
+    <div class="stage" id="stage">
+      <canvas id="cv"></canvas>
+      <div id="nogl">WebGL2 is not available in this browser, so shaders can't run here.</div>
+      <div class="hud">
+        <button id="btnPlay" title="Pause / play">⏸</button>
+        <button id="btnRestart" title="Reset time">⏮</button>
+        <select id="scale" title="Render resolution">
+          <option value="0.25">¼ res</option><option value="0.5">½ res</option>
+          <option value="1" selected>1× res</option><option value="2">2× res</option>
+        </select>
+        <button id="btnShot" title="Save screenshot">📷</button>
+        <button id="btnFull" title="Fullscreen">⛶</button>
+        <span class="sp"></span>
+        <span id="stats">–</span>
+      </div>
+    </div>
+    <div class="tabs">
+      <button data-tab="controls" class="on">Controls</button>
+      <button data-tab="console">Console</button>
+      <button data-tab="glsl">GLSL</button>
+      <button data-tab="help">Help</button>
+    </div>
+    <div class="panel">
+      <div class="pane on" id="pane-controls"></div>
+      <div class="pane" id="pane-console"><pre class="log" id="log"></pre></div>
+      <div class="pane" id="pane-glsl"><pre class="glsl" id="glslOut"></pre></div>
+      <div class="pane help" id="pane-help">
+        <h3>How it works</h3>
+        <p>Your HLSL pixel shader is translated to GLSL ES 3.0 in the browser and rendered with WebGL2 over the full canvas. Nothing is uploaded anywhere.</p>
+        <h3>Entry point</h3>
+        <ul>
+          <li><code>float4 main(float2 uv : TEXCOORD0) : SV_Target</code> – also accepts <code>float3</code>/<code>float</code> returns, struct inputs, <code>SV_Position</code>. Names tried: <code>main, PSMain, pixel, frag…</code> (otherwise the last <code>float4</code> function).</li>
+          <li><code>void mainImage(out float4 fragColor, in float2 fragCoord)</code> – Shadertoy style.</li>
+          <li><code>uv</code> / <code>SV_Position</code> follow HLSL: origin top-left, y down.</li>
+        </ul>
+        <h3>Built-in uniforms</h3>
+        <ul>
+          <li><code>float iTime</code>, <code>float iTimeDelta</code>, <code>int iFrame</code></li>
+          <li><code>float3 iResolution</code> (pixels), <code>float4 iMouse</code> (pixels, origin bottom-left, Shadertoy convention)</li>
+        </ul>
+        <h3>Your own parameters → UI controls</h3>
+        <ul>
+          <li>Top-level <code>float / float2-4 / int / uint / bool</code> globals and <code>cbuffer</code> members become uniforms with sliders. Initializers are the defaults.</li>
+          <li>Add <code>// range(min, max)</code> on the same line to set slider limits. Names containing <em>color / tint / albedo / rgb</em> get a color picker.</li>
+          <li><code>Texture2D t; SamplerState s;</code> + <code>t.Sample(s, uv)</code> work. All textures share one image: use “Load image” in Controls.</li>
+        </ul>
+        <h3>Translated automatically</h3>
+        <p>float2/3/4, int/uint/bool vectors, floatNxN matrices, <code>lerp frac saturate rsqrt mul mad fmod atan2 ddx ddy clip sincos rcp log10 tex2D</code>, <code>(float3)x</code> casts, <code>float3 x = 0;</code>, <code>static</code>, <code>[unroll]</code>, semantics, <code>register()</code>.</p>
+        <h3>Known limits</h3>
+        <ul>
+          <li>GLSL ES is stricter than HLSL: no implicit int→float (write <code>1.0</code>, not <code>1</code>), no <code>pow(v3, 2.0)</code> with a scalar exponent, no vector comparisons like <code>a &lt; b</code>.</li>
+          <li>Matrix indexing <code>M[i]</code> is column-wise in GLSL (HLSL is row-wise). <code>mul()</code> and matrix constructors are handled consistently.</li>
+          <li>No <code>#include</code>, compute/geometry stages, or multiple render targets.</li>
+          <li>Errors are shown with your HLSL line numbers. The GLSL tab shows what is actually compiled.</li>
+        </ul>
+        <p class="hint">Ctrl/Cmd+Enter recompiles immediately. Your code is autosaved in this browser.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+/* ============================================================================
+   HLSL -> GLSL ES 3.00 translator
+   ========================================================================== */
+/*TRANSLATOR_START*/
+const BUILTIN_UNIFORMS = new Set(['iTime','iTimeDelta','iResolution','iMouse','iFrame']);
+
+function buildPrelude(){
+  const typeMap = {
+    float2:'vec2',float3:'vec3',float4:'vec4',half:'float',half2:'vec2',half3:'vec3',half4:'vec4',
+    int2:'ivec2',int3:'ivec3',int4:'ivec4',uint2:'uvec2',uint3:'uvec3',uint4:'uvec4',
+    bool2:'bvec2',bool3:'bvec3',bool4:'bvec4',
+    float2x2:'mat2',float3x3:'mat3',float4x4:'mat4',half2x2:'mat2',half3x3:'mat3',half4x4:'mat4',matrix:'mat4'
+  };
+  const fnMap = {
+    frac:'fract',lerp:'mix',rsqrt:'inversesqrt',ddx:'dFdx',ddy:'dFdy',ddx_fine:'dFdx',ddy_fine:'dFdy',
+    ddx_coarse:'dFdx',ddy_coarse:'dFdy',asfloat:'uintBitsToFloat',asuint:'floatBitsToUint',asint:'floatBitsToInt',
+    countbits:'bitCount',reversebits:'bitfieldReverse',firstbithigh:'findMSB',firstbitlow:'findLSB'
+  };
+  let p = '#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n';
+  p += 'uniform float iTime; uniform float iTimeDelta; uniform vec3 iResolution; uniform vec4 iMouse; uniform int iFrame;\n';
+  for (const k in typeMap) p += `#define ${k} ${typeMap[k]}\n`;
+  for (const k in fnMap)   p += `#define ${k} ${fnMap[k]}\n`;
+  p += '#define atan2(y,x) atan((y),(x))\n#define tex2D(s,uv) texture((s),(uv))\n';
+  const T = ['float','vec2','vec3','vec4'];
+  for (const t of T) {
+    p += `${t} saturate(${t} x){return clamp(x,0.,1.);}\n`;
+    p += `${t} fmod(${t} x,${t} y){return x-y*trunc(x/y);}\n`;
+    p += `${t} mad(${t} a,${t} b,${t} c){return a*b+c;}\n`;
+    p += `${t} rcp(${t} x){return 1./x;}\n`;
+    p += `${t} log10(${t} x){return log2(x)*0.30102999566;}\n`;
+    p += `${t} exp10(${t} x){return exp2(x*3.32192809489);}\n`;
+    p += `void sincos(${t} x,out ${t} s,out ${t} c){s=sin(x);c=cos(x);}\n`;
+    p += t === 'float' ? 'void clip(float x){if(x<0.)discard;}\n'
+                       : `void clip(${t} x){if(any(lessThan(x,${t}(0.))))discard;}\n`;
+  }
+  p += 'float mul(float a,float b){return a*b;}\n';
+  for (const v of ['vec2','vec3','vec4']) {
+    p += `${v} mul(float a,${v} b){return a*b;}\n${v} mul(${v} a,float b){return a*b;}\nfloat mul(${v} a,${v} b){return dot(a,b);}\n`;
+  }
+  for (const [m,v] of [['mat2','vec2'],['mat3','vec3'],['mat4','vec4']]) {
+    p += `${v} mul(${m} a,${v} b){return b*a;}\n${v} mul(${v} a,${m} b){return b*a;}\n${m} mul(${m} a,${m} b){return b*a;}\n`;
+    p += `${m} mul(float a,${m} b){return a*b;}\n${m} mul(${m} a,float b){return a*b;}\n`;
+  }
+  return p;
+}
+const PRELUDE = buildPrelude();
+const PRELUDE_LINES = (PRELUDE.match(/\n/g) || []).length;
+
+function depthMap(s){
+  const d = new Int32Array(s.length + 1); let k = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '}') k = Math.max(0, k - 1);
+    d[i] = k;
+    if (c === '{') k++;
+  }
+  return d;
+}
+function balanced(s, i){ // s[i] is ( or [ ; returns index after the matching close
+  const open = s[i], close = open === '(' ? ')' : ']';
+  let n = 0;
+  for (; i < s.length; i++) {
+    if (s[i] === open) n++;
+    else if (s[i] === close && --n === 0) return i + 1;
+  }
+  return s.length;
+}
+function fixCasts(s){
+  const re = /\(\s*(float|half|int|uint|bool)([1-4]?)\s*\)[ \t]*/;
+  let out = '', rest = s, m;
+  while ((m = re.exec(rest))) {
+    out += rest.slice(0, m.index);
+    const i = m.index + m[0].length;
+    let j = i;
+    if (rest[j] === '(') j = balanced(rest, j);
+    else {
+      for (;;) {
+        while (j < rest.length && /[\w.]/.test(rest[j])) j++;
+        if (rest[j] === '(' || rest[j] === '[') j = balanced(rest, j); else break;
+      }
+    }
+    if (j === i) { out += rest.slice(m.index, i); rest = rest.slice(i); continue; }
+    const ty = m[1] === 'half' ? 'float' : m[1];
+    out += `${ty}${m[2]}(${rest.slice(i, j)})`;
+    rest = rest.slice(j);
+  }
+  return out + rest;
+}
+function semExpr(type, sem, name){
+  const dims = {float:1,half:1,float2:2,half2:2,float3:3,half3:3,float4:4,half4:4};
+  const dim = dims[type];
+  if (!dim) return `${type}(0)`;
+  let key = (sem || '').toUpperCase();
+  if (!key) {
+    const n = name.toLowerCase();
+    key = /uv|tex|coord/.test(n) ? 'TEXCOORD' : /pos|frag/.test(n) ? 'SV_POSITION' : dim === 2 ? 'TEXCOORD' : '';
+  }
+  let v4;
+  if (/^(SV_POSITION|POSITION|VPOS|SV_POS)/.test(key)) v4 = '_fragPx';
+  else if (/^TEXCOORD/.test(key)) v4 = 'vec4(_uv,0.,1.)';
+  else if (/^COLOR/.test(key)) v4 = 'vec4(1.)';
+  else if (/^NORMAL/.test(key)) v4 = 'vec4(0.,0.,1.,0.)';
+  else v4 = 'vec4(0.)';
+  return ['', `${v4}.x`, `${v4}.xy`, `${v4}.xyz`, v4][dim];
+}
+function parseInit(type, txt){
+  const dim = /([234])$/.test(type) ? +RegExp.$1 : 1;
+  const base = /^bool/.test(type) ? 'bool' : /^(int|uint)/.test(type) ? 'int' : 'float';
+  let vals = [];
+  if (txt) {
+    if (base === 'bool') vals = [/true|\b1\b/.test(txt) ? 1 : 0];
+    else vals = (txt.replace(/\b(?:float|half|int|uint|bool)[1-4]?\b/g, '').match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) || []).map(Number);
+  }
+  if (vals.length === 1 && dim > 1) vals = Array(dim).fill(vals[0]);
+  while (vals.length < dim) vals.push(0);
+  return { base, dim, init: vals.slice(0, dim) };
+}
+
+function translate(src){
+  const orig = src.replace(/\r\n?/g, '\n');
+  const origLines = orig.split('\n');
+  let s = orig.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, m => m.replace(/[^\n]/g, ' '));
+  s = s.replace(/[ \t]*:[ \t]*register\s*\([^)]*\)/g, '');
+
+  // cbuffer / tbuffer -> plain uniform declarations
+  s = s.replace(/\b(?:cbuffer|tbuffer)\s+\w+\s*\{([^}]*)\}[ \t]*;?/g, (m, body) => {
+    const nl = (m.slice(0, m.indexOf('{')).match(/\n/g) || []).length;
+    return '\n'.repeat(nl) + body.replace(/(^|;)(\s*)((?:float|half|int|uint|bool)[1-4]?\b)/g, '$1$2uniform $3');
+  });
+
+  // textures / samplers
+  const textures = [];
+  s = s.replace(/\bTexture2D(?:[ \t]*<[^>]*>)?[ \t]+(\w+)[ \t]*;/g, (m, n) => { textures.push(n); return `uniform sampler2D ${n};`; });
+  s = s.replace(/\bSampler(?:Comparison)?State[ \t]+\w+[ \t]*;/g, '');
+  s = s.replace(/\b(\w+)[ \t]*\.[ \t]*SampleLevel[ \t]*\([ \t]*\w+[ \t]*,[ \t]*/g, 'textureLod($1, ');
+  s = s.replace(/\b(\w+)[ \t]*\.[ \t]*Sample[ \t]*\([ \t]*\w+[ \t]*,[ \t]*/g, 'texture($1, ');
+
+  // global variables -> uniforms
+  const uniforms = [];
+  {
+    const depth = depthMap(s);
+    const re = /(^|\n)([ \t]*)((?:static\s+const|static|const|uniform|extern|groupshared|precise|volatile)\s+)?\b(float[234]?|half[234]?|int|uint|bool)\s+(\w+)\s*(?:=\s*([^;]*?))?\s*;/g;
+    const edits = []; let m;
+    while ((m = re.exec(s))) {
+      const start = m.index + m[1].length + m[2].length;
+      const end = m.index + m[0].length;
+      const mod = (m[3] || '').trim();
+      if (depth[start] !== 0) continue;
+      if (mod && !/^(uniform|extern)$/.test(mod)) continue;
+      const type = m[4], name = m[5];
+      const nl = (s.slice(start, end).match(/\n/g) || []).length;
+      if (BUILTIN_UNIFORMS.has(name)) { edits.push([start, end, '\n'.repeat(nl)]); continue; }
+      const line = (s.slice(0, end).match(/\n/g) || []).length;
+      const cm = /\/\/(.*)$/.exec(origLines[line] || '');
+      let range = null;
+      if (cm) { const r = /range\s*\(?\s*(-?\d*\.?\d+)\s*[,\s]\s*(-?\d*\.?\d+)/i.exec(cm[1]); if (r) range = [+r[1], +r[2]]; }
+      const info = parseInit(type, m[6]);
+      uniforms.push({ name, type: type.replace(/^half/, 'float'), base: info.base, dim: info.dim, init: info.init, range,
+                      color: info.base === 'float' && info.dim >= 3 && /col|tint|albedo|rgb/i.test(name) });
+      edits.push([start, end, `uniform ${type} ${name};` + '\n'.repeat(nl)]);
+    }
+    for (let i = edits.length - 1; i >= 0; i--) s = s.slice(0, edits[i][0]) + edits[i][2] + s.slice(edits[i][1]);
+  }
+
+  // structs: collect members, strip semantics
+  const structs = {};
+  s = s.replace(/\bstruct\s+(\w+)\s*\{([^}]*)\}/g, (m, name, body) => {
+    const mem = []; const re = /(\w+)\s+(\w+)\s*(?::\s*(\w+))?\s*;/g; let x;
+    while ((x = re.exec(body))) mem.push({ type: x[1], name: x[2], sem: x[3] || '' });
+    structs[name] = mem;
+    return m.replace(/[ \t]*:[ \t]*\w+[ \t]*(?=;)/g, '');
+  });
+
+  // misc syntax
+  s = s.replace(/\[\s*(?:unroll|loop|branch|flatten|fastopt|allow_uav_condition)\s*(?:\([^)]*\))?\s*\]/g, '');
+  s = s.replace(/\bstatic\s+const\b/g, 'const').replace(/\bstatic\b[ \t]*/g, '');
+  s = s.replace(/\b(?:linear|nointerpolation|centroid|noperspective|precise)\b[ \t]*/g, '');
+  s = fixCasts(s);
+  s = s.replace(/\b(float|half)([1-4]?)(\s+\w+\s*=\s*)(-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?[fF]?)(\s*;)/g,
+                (m, t, n, mid, v, end) => `${t === 'half' ? 'float' : t}${n}${mid}${t === 'half' ? 'float' : t}${n}(${v})${end}`);
+  s = s.replace(/\b(input|output|filter|common|active|partition|fixed|sample)\b/g, '_$1');
+
+  // find the entry point
+  const depth = depthMap(s);
+  const fre = /(^|\n)([ \t]*)(float4|half4|float3|half3|float|half|void)[ \t]+(\w+)[ \t]*\(([^)]*)\)(\s*(?::\s*\w+\s*)?)\{/g;
+  const cands = []; let m;
+  while ((m = fre.exec(s))) { if (depth[m.index + m[1].length] === 0) cands.push(m); }
+  const pref = ['main','mainImage','PSMain','psMain','pixel','frag','fragment','ps_main','PS','mainPS','MainPS'];
+  let pick = null;
+  for (const n of pref) { pick = cands.find(c => c[4] === n); if (pick) break; }
+  if (!pick) pick = [...cands].reverse().find(c => /^(float4|half4)$/.test(c[3]));
+  if (!pick) throw new Error('No pixel-shader entry point found. Define e.g.  float4 main(float2 uv : TEXCOORD0) : SV_Target  { … }');
+  const ret = pick[3] === 'half4' ? 'float4' : pick[3] === 'half3' ? 'float3' : pick[3] === 'half' ? 'float' : pick[3];
+  const ename = pick[4];
+  if (ret === 'void' && ename !== 'mainImage') throw new Error(`Entry point "${ename}" returns void. Return a float4 (SV_Target) or use  void mainImage(out float4 fragColor, in float2 fragCoord).`);
+
+  const params = [];
+  for (const raw of pick[5].split(',')) {
+    const t = raw.trim(); if (!t) continue;
+    const pm = /^((?:(?:in|out|inout|uniform|const)\s+)*)(\w+)\s+(\w+)(?:\s*:\s*(\w+))?$/.exec(t);
+    if (!pm) throw new Error(`Can't parse entry-point parameter: "${t}"`);
+    params.push({ qual: pm[1].trim(), type: pm[2], name: pm[3], sem: pm[4] || '' });
+  }
+  const cleanParams = params.map(p => `${p.qual.replace(/\b(uniform|const)\b\s*/g, '')} ${p.type} ${p.name}`.trim()).join(', ')
+                    + '\n'.repeat((pick[5].match(/\n/g) || []).length);
+  const header = `${pick[1]}${pick[2]}${ret === 'half4' ? 'float4' : ret} _ps_${ename}(${cleanParams})${'\n'.repeat((pick[6].match(/\n/g) || []).length)}{`;
+  s = s.slice(0, pick.index) + header + s.slice(pick.index + pick[0].length);
+
+  // generated main()
+  let body = '';
+  if (ename === 'mainImage' && ret === 'void') {
+    body = '  vec4 _c = vec4(0.,0.,0.,1.);\n  _ps_mainImage(_c, gl_FragCoord.xy);\n  _fragColor = _c;\n';
+  } else {
+    const args = [];
+    params.forEach((p, i) => {
+      if (/\bout\b/.test(p.qual)) { body += `  ${p.type} _a${i};\n`; args.push(`_a${i}`); }
+      else if (structs[p.type]) {
+        body += `  ${p.type} _a${i};\n`;
+        for (const mm of structs[p.type]) body += `  _a${i}.${mm.name} = ${semExpr(mm.type, mm.sem, mm.name)};\n`;
+        args.push(`_a${i}`);
+      } else args.push(semExpr(p.type, p.sem, p.name));
+    });
+    const call = `_ps_${ename}(${args.join(', ')})`;
+    const conv = ret === 'float4' ? call : ret === 'float3' ? `vec4(${call}, 1.)` : `vec4(vec3(${call}), 1.)`;
+    body += `  _fragColor = ${conv};\n`;
+  }
+  const wrapper = '\nout vec4 _fragColor;\nvoid main(){\n' +
+    '  vec2 _uv = vec2(gl_FragCoord.x / iResolution.x, 1.0 - gl_FragCoord.y / iResolution.y);\n' +
+    '  vec4 _fragPx = vec4(gl_FragCoord.x, iResolution.y - gl_FragCoord.y, gl_FragCoord.z, 1.0 / gl_FragCoord.w);\n' +
+    body + '}\n';
+  return { glsl: PRELUDE + s + wrapper, uniforms, textures, entry: ename, userLines: orig.split('\n').length };
+}
+/*TRANSLATOR_END*/
+
+/* ============================================================================
+   Samples
+   ========================================================================== */
+const SAMPLES = [
+{ name: 'Hello gradient', code:
+`// Top-level globals become UI controls. Add // range(min, max) for slider limits.
+float speed = 1.0;                    // range(0, 5)
+float3 tint = float3(0.2, 0.6, 1.0);
+
+float4 main(float2 uv : TEXCOORD0) : SV_Target
+{
+    float3 col = 0.5 + 0.5 * cos(iTime * speed + uv.xyx * 6.28318 + float3(0, 2, 4));
+    return float4(col * tint * 1.6, 1);
+}
+` },
+{ name: 'Plasma (cbuffer)', code:
+`cbuffer Params
+{
+    float scale = 4.0;     // range(1, 20)
+    float speed = 0.6;     // range(0, 3)
+    float4 colorA = float4(0.9, 0.2, 0.5, 1.0);
+    float4 colorB = float4(0.1, 0.4, 1.0, 1.0);
+};
+
+float4 main(float2 uv : TEXCOORD0) : SV_Target
+{
+    float2 p = (uv - 0.5) * scale * float2(iResolution.x / iResolution.y, 1.0);
+    float t = iTime * speed;
+    float v = sin(p.x + t) + sin(p.y * 1.3 - t) + sin((p.x + p.y) * 0.7 + t * 0.5);
+    v += sin(length(p) * 1.5 - t * 2.0);
+    float k = 0.5 + 0.25 * v;
+    return lerp(colorA, colorB, saturate(k));
+}
+` },
+{ name: 'Raymarched sphere (struct input)', code:
+`struct PSInput
+{
+    float4 pos : SV_Position;
+    float2 uv  : TEXCOORD0;
+};
+
+float wobble = 0.1;   // range(0, 0.4)
+
+float map(float3 p)
+{
+    float s = length(p) - (1.0 + wobble * sin(iTime * 2.0 + p.y * 6.0));
+    float f = p.y + 1.2;
+    return min(s, f);
+}
+
+float3 normalAt(float3 p)
+{
+    float2 e = float2(0.001, 0.0);
+    return normalize(float3(
+        map(p + e.xyy) - map(p - e.xyy),
+        map(p + e.yxy) - map(p - e.yxy),
+        map(p + e.yyx) - map(p - e.yyx)));
+}
+
+float4 main(PSInput i) : SV_Target
+{
+    float2 p = (i.uv * 2.0 - 1.0) * float2(iResolution.x / iResolution.y, -1.0);
+    float3 ro = float3(0.0, 0.3, -3.5);
+    float3 rd = normalize(float3(p, 1.6));
+
+    float t = 0.0;
+    for (int k = 0; k < 80; k++)
+    {
+        float d = map(ro + rd * t);
+        if (d < 0.001 || t > 20.0) break;
+        t += d;
+    }
+
+    float3 col = lerp(float3(0.05, 0.07, 0.12), float3(0.35, 0.55, 0.9), saturate(p.y * 0.5 + 0.5));
+    if (t < 20.0)
+    {
+        float3 pos = ro + rd * t;
+        float3 n = normalAt(pos);
+        float3 l = normalize(float3(-0.5, 0.8, -0.6));
+        float diff = saturate(dot(n, l));
+        float spec = pow(saturate(dot(reflect(-l, n), -rd)), 32.0);
+        float chk = step(0.0, sin(pos.x * 3.0) * sin(pos.z * 3.0));
+        float3 floorCol = float3(0.4, 0.4, 0.45) * (0.6 + 0.4 * chk);
+        float3 base = pos.y < -1.15 ? floorCol : float3(1.0, 0.45, 0.2);
+        col = base * (0.15 + diff) + spec;
+    }
+    return float4(pow(col, float3(0.4545, 0.4545, 0.4545)), 1.0);
+}
+` },
+{ name: 'Texture sampling', code:
+`// Use "Load image" in the Controls tab to swap the texture.
+Texture2D tex0 : register(t0);
+SamplerState samp : register(s0);
+
+float amount = 0.01;   // range(0, 0.05)
+
+float4 main(float2 uv : TEXCOORD0) : SV_Target
+{
+    float2 d = float2(sin(iTime + uv.y * 10.0), cos(iTime + uv.x * 10.0)) * amount;
+    return tex0.Sample(samp, uv + d);
+}
+` },
+{ name: 'Shadertoy-style mainImage', code:
+`void mainImage(out float4 fragColor, in float2 fragCoord)
+{
+    float2 uv = fragCoord / iResolution.xy;
+    float3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + float3(0.0, 2.0, 4.0));
+    float2 m = iMouse.xy / iResolution.xy;
+    col *= 1.0 - smoothstep(0.0, 0.15, distance(uv, m)) * 0.6;
+    fragColor = float4(col, 1.0);
+}
+` }
+];
+
+/* ============================================================================
+   UI / editor
+   ========================================================================== */
+const $ = s => document.querySelector(s);
+const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
+const src = $('#src'), hl = $('#hl'), gutter = $('#gutter');
+
+const TYPES = 'float[1-4]?(?:x[1-4])?|half[1-4]?(?:x[1-4])?|int[1-4]?|uint[1-4]?|bool[1-4]?|double|matrix|vector|void|Texture2D|SamplerState|sampler2D|struct|cbuffer';
+const KW = 'if|else|for|while|do|return|break|continue|discard|static|const|uniform|in|out|inout|true|false|switch|case|default|register|typedef|precise|extern';
+const FN = 'abs|acos|all|any|asin|atan|atan2|ceil|clamp|clip|cos|cosh|cross|ddx|ddy|degrees|determinant|distance|dot|exp|exp2|floor|fmod|frac|fwidth|isnan|isinf|length|lerp|log|log2|log10|mad|max|min|modf|mul|normalize|pow|radians|rcp|reflect|refract|round|rsqrt|saturate|sign|sin|sincos|sinh|smoothstep|sqrt|step|tan|tanh|transpose|trunc|tex2D|iTime|iTimeDelta|iResolution|iMouse|iFrame';
+const HL = new RegExp(`(\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?(?:\\*\\/|(?![\\s\\S])))|(^[ \\t]*#[^\\n]*)|\\b(${TYPES})\\b|\\b(${KW})\\b|\\b(${FN})\\b|(\\b\\d[\\w.]*|\\.\\d+\\w*)`, 'gm');
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function highlight(){
+  hl.innerHTML = esc(src.value).replace(HL, (m, c, p, t, k, f, n) =>
+    `<span class="${c ? 'c' : p ? 'p' : t ? 't' : k ? 'k' : f ? 'f' : 'n'}">${m}</span>`) + '\n';
+  updateGutter();
+}
+let errorLines = new Set();
+function updateGutter(){
+  const n = src.value.split('\n').length;
+  let h = '';
+  for (let i = 1; i <= n; i++) h += errorLines.has(i) ? `<span class="e">${i}</span>\n` : `${i}\n`;
+  gutter.innerHTML = h;
+  gutter.scrollTop = src.scrollTop;
+}
+src.addEventListener('scroll', () => { hl.scrollTop = src.scrollTop; hl.scrollLeft = src.scrollLeft; gutter.scrollTop = src.scrollTop; });
+src.addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    if (!document.execCommand('insertText', false, '    ')) {
+      const a = src.selectionStart; src.setRangeText('    ', a, src.selectionEnd, 'end'); src.dispatchEvent(new Event('input'));
+    }
+  } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); compile(); }
+});
+let timer = 0;
+src.addEventListener('input', () => {
+  highlight();
+  try { localStorage.setItem('hlsl-viewer-src', src.value); } catch (e) {}
+  clearTimeout(timer); timer = setTimeout(compile, 450);
+});
+
+// tabs
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'pane-' + b.dataset.tab));
+});
+function showTab(name){ document.querySelector(`.tabs button[data-tab="${name}"]`).click(); }
+
+// console
+const logEl = $('#log');
+function log(kind, msg){
+  const t = new Date().toLocaleTimeString([], { hour12: false });
+  const line = el('div'); line.innerHTML = `<span class="d">${t}</span> <span class="${kind}">${esc(msg)}</span>`;
+  logEl.appendChild(line);
+  while (logEl.childNodes.length > 200) logEl.removeChild(logEl.firstChild);
+  logEl.parentElement.parentElement.scrollTop = 1e9;
+}
+function setStatus(kind, text){ const s = $('#status'); s.className = kind; s.lastElementChild.textContent = text; }
+
+/* ============================================================================
+   WebGL2 renderer
+   ========================================================================== */
+const canvas = $('#cv');
+const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, preserveDrawingBuffer: true });
+let prog = null, uLocs = {}, curTr = null;
+const uVals = {};           // name -> {type, vals}
+let texList = [], defaultTex = null, userTex = null;
+
+const VS = `#version 300 es
+void main(){ vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+
+function makeTex(source){
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  return t;
+}
+function initDefaultTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 256, 256);
+  grad.addColorStop(0, '#ff7a59'); grad.addColorStop(.5, '#7a5cff'); grad.addColorStop(1, '#2ad4c0');
+  g.fillStyle = grad; g.fillRect(0, 0, 256, 256);
+  g.fillStyle = 'rgba(255,255,255,.28)';
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if ((x + y) & 1) g.fillRect(x * 32, y * 32, 32, 32);
+  g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 6; g.beginPath(); g.arc(128, 128, 70, 0, 7); g.stroke();
+  defaultTex = makeTex(c);
+}
+
+function compileShader(type, code){
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, code); gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) { const l = gl.getShaderInfoLog(sh) || 'unknown error'; gl.deleteShader(sh); return { error: l }; }
+  return { sh };
+}
+function makeProgram(fsCode){
+  const v = compileShader(gl.VERTEX_SHADER, VS); if (v.error) return { error: 'Vertex shader: ' + v.error };
+  const f = compileShader(gl.FRAGMENT_SHADER, fsCode); if (f.error) { gl.deleteShader(v.sh); return { error: f.error }; }
+  const p = gl.createProgram();
+  gl.attachShader(p, v.sh); gl.attachShader(p, f.sh); gl.linkProgram(p);
+  gl.deleteShader(v.sh); gl.deleteShader(f.sh);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) { const l = gl.getProgramInfoLog(p); gl.deleteProgram(p); return { error: 'Link: ' + l }; }
+  return { p };
+}
+
+function reportErrors(log_, userLines){
+  errorLines = new Set(); const msgs = [];
+  const re = /^(ERROR|WARNING):\s*\d+:(\d+):\s*(.*)$/gm; let m, any = false;
+  while ((m = re.exec(log_))) {
+    if (m[1] !== 'ERROR') continue;
+    any = true;
+    const ln = +m[2] - PRELUDE_LINES;
+    if (ln >= 1 && ln <= userLines) { errorLines.add(ln); msgs.push(`line ${ln}: ${m[3]}`); }
+    else if (ln > userLines) msgs.push(`(generated wrapper) ${m[3]}`);
+    else msgs.push(`(built-in prelude) ${m[3]}`);
+  }
+  if (!any) msgs.push(log_.trim());
+  updateGutter();
+  return msgs;
+}
+
+function compile(){
+  const t0 = performance.now();
+  let tr;
+  try { tr = translate(src.value); }
+  catch (e) { errorLines = new Set(); updateGutter(); setStatus('err', 'error'); log('e', e.message); return; }
+  showGLSL(tr.glsl);
+  if (!gl) return;
+  const r = makeProgram(tr.glsl);
+  if (r.error) {
+    const msgs = reportErrors(r.error, tr.userLines);
+    setStatus('err', `${msgs.length} error${msgs.length > 1 ? 's' : ''}`);
+    msgs.forEach(x => log('e', x));
+    return;
+  }
+  errorLines = new Set(); updateGutter();
+  if (prog) gl.deleteProgram(prog);
+  prog = r.p; curTr = tr; uLocs = {};
+  for (const n of ['iTime','iTimeDelta','iResolution','iMouse','iFrame']) uLocs[n] = gl.getUniformLocation(prog, n);
+  for (const u of tr.uniforms) uLocs[u.name] = gl.getUniformLocation(prog, u.name);
+  for (const n of tr.textures) uLocs[n] = gl.getUniformLocation(prog, n);
+  buildControls(tr);
+  setStatus('ok', `compiled in ${(performance.now() - t0).toFixed(0)} ms`);
+  log('o', `Compiled OK (entry: ${tr.entry}, ${tr.uniforms.length} parameter${tr.uniforms.length === 1 ? '' : 's'})`);
+}
+function showGLSL(g){
+  $('#glslOut').textContent = g.split('\n').map((l, i) => String(i + 1).padStart(4) + '  ' + l).join('\n');
+}
+
+/* ---------- parameter controls ---------- */
+const ctlBox = $('#pane-controls');
+const fmt = v => String(+(+v).toFixed(4));
+function autoRange(v){
+  if (v >= 0 && v <= 1) return [0, 1];
+  if (v > 1) return [0, Math.ceil(v * 2)];
+  if (v >= -1) return [-1, 1];
+  return [Math.floor(v * 2), Math.ceil(-v * 2)];
+}
+function sliderRow(label, val, min, max, step, onChange){
+  const row = el('div', 'row'); const l = el('label'); l.textContent = label;
+  const r = el('input'); r.type = 'range'; r.min = min; r.max = max; r.step = step; r.value = val;
+  const n = el('input'); n.type = 'number'; n.step = step; n.value = fmt(val);
+  r.oninput = () => { n.value = fmt(r.value); onChange(+r.value); };
+  n.onchange = () => { const v = +n.value; if (isNaN(v)) return; if (v < +r.min) r.min = v; if (v > +r.max) r.max = v; r.value = v; onChange(v); };
+  row.append(l, r, n); return row;
+}
+const toHex = a => '#' + a.slice(0, 3).map(x => Math.round(Math.min(1, Math.max(0, x)) * 255).toString(16).padStart(2, '0')).join('');
+const fromHex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+
+function buildControls(tr){
+  ctlBox.innerHTML = '';
+  const names = new Set(tr.uniforms.map(u => u.name));
+  for (const k in uVals) if (!names.has(k)) delete uVals[k];
+  for (const u of tr.uniforms) {
+    let st = uVals[u.name];
+    if (!st || st.type !== u.type) st = uVals[u.name] = { type: u.type, vals: u.init.slice() };
+    const box = el('div', 'ctl');
+    const h = el('h4'); h.textContent = u.name; const sp = el('span'); sp.textContent = u.type; h.append(sp); box.append(h);
+    if (u.base === 'bool') {
+      const cb = el('input'); cb.type = 'checkbox'; cb.checked = !!st.vals[0]; cb.onchange = () => st.vals[0] = cb.checked ? 1 : 0; box.append(cb);
+    } else if (u.color) {
+      const row = el('div', 'row'); const l = el('label'); l.textContent = 'rgb';
+      const ci = el('input'); ci.type = 'color'; ci.value = toHex(st.vals);
+      ci.oninput = () => { const c = fromHex(ci.value); st.vals[0] = c[0]; st.vals[1] = c[1]; st.vals[2] = c[2]; };
+      row.append(l, ci); box.append(row);
+      if (u.dim === 4) box.append(sliderRow('a', st.vals[3], 0, 1, 0.001, v => st.vals[3] = v));
+    } else {
+      const labels = u.dim === 1 ? [''] : ['x','y','z','w'].slice(0, u.dim);
+      for (let i = 0; i < u.dim; i++) {
+        let [mn, mx] = u.range || (u.base === 'int' ? [0, Math.max(10, Math.ceil(Math.abs(u.init[i]) * 2))] : autoRange(u.init[i]));
+        if (st.vals[i] < mn) mn = st.vals[i]; if (st.vals[i] > mx) mx = st.vals[i];
+        const step = u.base === 'int' ? 1 : (mx - mn) / 1000;
+        box.append(sliderRow(labels[i], st.vals[i], mn, mx, step, v => st.vals[i] = v));
+      }
+    }
+    ctlBox.append(box);
+  }
+  if (tr.textures.length) {
+    const box = el('div', 'ctl'); const h = el('h4'); h.textContent = 'Textures'; const sp = el('span'); sp.textContent = tr.textures.join(', '); h.append(sp);
+    const b1 = el('button'); b1.textContent = 'Load image…'; b1.onclick = () => $('#imgIn').click();
+    const b2 = el('button'); b2.textContent = 'Reset'; b2.style.marginLeft = '6px'; b2.onclick = () => { userTex = null; };
+    box.append(h, b1, b2); ctlBox.append(box);
+  }
+  const tip = el('div', 'hint');
+  tip.textContent = tr.uniforms.length || tr.textures.length
+    ? 'Tip: add “// range(min, max)” after a declaration to set its slider limits.'
+    : 'No parameters yet. Declare globals like  float speed = 1.0; // range(0, 5)  or a cbuffer to get live sliders.';
+  ctlBox.append(tip);
+}
+const imgIn = el('input'); imgIn.type = 'file'; imgIn.accept = 'image/*'; imgIn.id = 'imgIn'; imgIn.hidden = true; document.body.append(imgIn);
+imgIn.onchange = () => {
+  const f = imgIn.files[0]; if (!f) return;
+  const img = new Image();
+  img.onload = () => { userTex = makeTex(img); URL.revokeObjectURL(img.src); log('d', `Loaded image ${f.name} (${img.width}×${img.height})`); };
+  img.onerror = () => log('e', 'Could not load that image.');
+  img.src = URL.createObjectURL(f); imgIn.value = '';
+};
+
+/* ---------- render loop ---------- */
+let playing = true, time = 0, frameNo = 0, last = performance.now(), fpsT = last, fpsN = 0, dtShown = 0;
+const mouse = [0, 0, 0, 0]; let mouseDown = false;
+let scaleF = 1;
+function resize(){
+  const r = canvas.getBoundingClientRect(), d = (window.devicePixelRatio || 1) * scaleF;
+  const w = Math.max(1, Math.round(r.width * d)), h = Math.max(1, Math.round(r.height * d));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+new ResizeObserver(resize).observe($('#stage'));
+$('#scale').onchange = e => { scaleF = +e.target.value; resize(); };
+
+function setUniform(u){
+  const loc = uLocs[u.name]; if (!loc) return;
+  const v = uVals[u.name].vals;
+  if (u.base === 'float') [null, gl.uniform1f, gl.uniform2f, gl.uniform3f, gl.uniform4f][u.dim].call(gl, loc, ...v);
+  else if (u.base === 'int' && /^uint/.test(u.type)) gl.uniform1ui(loc, Math.max(0, Math.round(v[0])));
+  else gl.uniform1i(loc, Math.round(v[0]));
+}
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.25, (now - last) / 1000); last = now;
+  if (playing) { time += dt; frameNo++; dtShown = dt; }
+  if (!gl || !prog) return;
+  resize();
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(prog);
+  const L = uLocs;
+  if (L.iTime) gl.uniform1f(L.iTime, time);
+  if (L.iTimeDelta) gl.uniform1f(L.iTimeDelta, dtShown);
+  if (L.iFrame) gl.uniform1i(L.iFrame, frameNo);
+  if (L.iResolution) gl.uniform3f(L.iResolution, canvas.width, canvas.height, 1);
+  if (L.iMouse) gl.uniform4f(L.iMouse, ...mouse);
+  for (const u of curTr.uniforms) setUniform(u);
+  curTr.textures.forEach((n, i) => {
+    gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, userTex || defaultTex);
+    if (L[n]) gl.uniform1i(L[n], i);
+  });
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  fpsN++;
+  if (now - fpsT > 500) {
+    $('#stats').textContent = `${Math.round(fpsN * 1000 / (now - fpsT))} fps · ${canvas.width}×${canvas.height} · t=${time.toFixed(1)}s`;
+    fpsT = now; fpsN = 0;
+  }
+}
+
+/* mouse */
+function mousePos(e){
+  const r = canvas.getBoundingClientRect();
+  return [(e.clientX - r.left) * canvas.width / r.width, (r.bottom - e.clientY) * canvas.height / r.height];
+}
+canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); mouseDown = true; const p = mousePos(e); mouse[0] = mouse[2] = p[0]; mouse[1] = mouse[3] = p[1]; });
+canvas.addEventListener('pointermove', e => { if (!mouseDown) return; const p = mousePos(e); mouse[0] = p[0]; mouse[1] = p[1]; });
+canvas.addEventListener('pointerup', () => { mouseDown = false; mouse[2] = -Math.abs(mouse[2]); mouse[3] = -Math.abs(mouse[3]); });
+
+/* HUD */
+$('#btnPlay').onclick = e => { playing = !playing; e.target.textContent = playing ? '⏸' : '▶'; };
+$('#btnRestart').onclick = () => { time = 0; frameNo = 0; };
+$('#btnFull').onclick = () => { const s = $('#stage'); (document.fullscreenElement ? document.exitFullscreen() : s.requestFullscreen && s.requestFullscreen()); };
+$('#btnShot').onclick = () => canvas.toBlob(b => download(b, 'hlsl-viewer.png'), 'image/png');
+
+/* file / share */
+function download(blob, name){ const a = el('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+$('#btnSave').onclick = () => download(new Blob([src.value], { type: 'text/plain' }), 'shader.hlsl');
+$('#btnOpen').onclick = () => $('#fileIn').click();
+$('#fileIn').onchange = async e => { const f = e.target.files[0]; if (f) { setSource(await f.text()); log('d', 'Opened ' + f.name); } e.target.value = ''; };
+$('#btnShare').onclick = async () => {
+  const b64 = btoa(unescape(encodeURIComponent(src.value)));
+  const url = location.href.split('#')[0] + '#code=' + encodeURIComponent(b64);
+  history.replaceState(null, '', url);
+  try { await navigator.clipboard.writeText(url); log('o', 'Link copied to clipboard (' + url.length + ' chars).'); }
+  catch (e) { log('d', 'Link is now in the address bar: copy it from there.'); }
+  setStatus('ok', 'link ready');
+};
+function setSource(code){ src.value = code; highlight(); clearTimeout(timer); try { localStorage.setItem('hlsl-viewer-src', code); } catch (e) {} compile(); time = 0; frameNo = 0; }
+
+const sel = $('#samples');
+sel.innerHTML = '<option value="">Examples…</option>' + SAMPLES.map((s, i) => `<option value="${i}">${esc(s.name)}</option>`).join('');
+sel.onchange = () => { if (sel.value !== '') { history.replaceState(null, '', location.pathname + location.search); setSource(SAMPLES[+sel.value].code); } sel.value = ''; };
+
+/* ---------- boot ---------- */
+(function boot(){
+  let code = null;
+  const m = /[#&]code=([^&]+)/.exec(location.hash);
+  if (m) { try { code = decodeURIComponent(escape(atob(decodeURIComponent(m[1])))); } catch (e) {} }
+  if (code == null) { try { code = localStorage.getItem('hlsl-viewer-src'); } catch (e) {} }
+  if (!code) code = SAMPLES[0].code;
+  src.value = code; highlight();
+  if (!gl) { $('#nogl').style.display = 'flex'; setStatus('err', 'no WebGL2'); const t = translate(code); showGLSL(t.glsl); return; }
+  initDefaultTexture();
+  log('d', 'WebGL2 ready: ' + gl.getParameter(gl.VERSION));
+  compile();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
